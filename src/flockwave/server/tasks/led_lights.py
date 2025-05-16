@@ -44,12 +44,17 @@ class LightConfiguration:
 
     color: RGBColor
     effect: LightEffectType
+    # custom
+    blink_rate: int
+    brightness: int
 
     @classmethod
     def create_solid_color(cls, color: RGBColor) -> "LightConfiguration":
         result = cls()
         result.color = tuple(color)  # type: ignore
         result.effect = LightEffectType.SOLID
+        result.blink_rate = 0
+        result.brightness = 100
         return result
 
     @classmethod
@@ -60,6 +65,8 @@ class LightConfiguration:
         """Constructor."""
         self.color = (0, 0, 0)
         self.effect = LightEffectType.OFF
+        self.blink_rate = 0
+        self.brightness = 0
 
     def clone(self) -> "LightConfiguration":
         """Makes an exact shallow copy of the configuration object."""
@@ -70,7 +77,14 @@ class LightConfiguration:
     @property
     def json(self):
         """Returns the JSON representation of the configuration object."""
-        return {"color": list(self.color), "effect": str(self.effect.value)}
+        # return {"color": list(self.color), "effect": str(self.effect.value)}
+        # custom
+        return {
+            "color": list(self.color),
+            "effect": str(self.effect.value),
+            "blink_rate": self.blink_rate,
+            "brightness": self.brightness,
+        }
 
     def update_from_json(self, obj):
         """Updates the configuration object from its JSON representation."""
@@ -95,6 +109,16 @@ class LightConfiguration:
             # user sent the same configuration again because some of the
             # drones in the show haven't received the previous request
             self.effect = LightEffectType(effect)
+            changed = True
+
+        blink_rate = obj.get("blink_rate")
+        if blink_rate:
+            self.blink_rate = blink_rate
+            changed = True
+
+        brightness = obj.get("brightness")
+        if brightness:
+            self.brightness = brightness
             changed = True
 
         if changed:
