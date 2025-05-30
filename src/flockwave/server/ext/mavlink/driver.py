@@ -45,8 +45,11 @@ from flockwave.server.show import (
     get_rth_plan_from_show_specification,
     get_trajectory_from_show_specification,
     get_yaw_setpoints_from_show_specification,
+    get_position_from_show_specification,
+    get_colors_from_show_specification,
 )
 from flockwave.server.show.formats import SkybrushBinaryShowFile
+from flockwave.server.show.essp_format import EsspShowFile
 from flockwave.server.types import GCSLogMessageSender
 from flockwave.server.utils import color_to_rgb8_triplet, to_uppercase_string
 from flockwave.server.utils.generic import nop
@@ -2111,19 +2114,41 @@ class MAVLinkUAV(UAVBase):
         rth_plan = get_rth_plan_from_show_specification(show)
         yaw_setpoints = get_yaw_setpoints_from_show_specification(show)
 
-        async with SkybrushBinaryShowFile.create_in_memory() as show_file:
-            await show_file.add_trajectory(trajectory)
-            await show_file.add_light_program(light_program)
-            if rth_plan:
-                await show_file.add_rth_plan(rth_plan)
-            if yaw_setpoints:
-                await show_file.add_yaw_setpoints(yaw_setpoints)
+        colors = get_colors_from_show_specification(show)
+        positions = get_position_from_show_specification(show)
+
+        position_data_size = len(positions) if positions else 0
+        color_data_size = len(colors) if colors else 0
+        # update later
+        color_fps = 15
+        position_fps = 15
+
+        async with EsspShowFile.create_in_memory() as show_file:
+            await show_file.add_header_section_block(
+                1, position_fps, position_data_size
+            )
+            await show_file.add_header_section_block(2, color_fps, color_data_size)
+            if positions:
+                await show_file.add_position(positions)
+            if colors:
+                await show_file.add_color(colors)
             await show_file.finalize()
             data = show_file.get_contents()
 
+        # async with SkybrushBinaryShowFile.create_in_memory() as show_file:
+        #     await show_file.add_trajectory(trajectory)
+        #     await show_file.add_light_program(light_program)
+        #     if rth_plan:
+        #         await show_file.add_rth_plan(rth_plan)
+        #     if yaw_setpoints:
+        #         await show_file.add_yaw_setpoints(yaw_setpoints)
+        #     await show_file.finalize()
+        #     data = show_file.get_contents()
+
         # Upload show file
         async with aclosing(MAVFTP.for_uav(self)) as ftp:
-            await ftp.put(data, "/collmot/show.skyb")
+            # await ftp.put(data, "/collmot/show.skyb")
+            await ftp.put(data, "collmot/drone.essp")
 
         # We give some time for the filesystem to flush caches etc before
         # asking the drone to reload the show file. There were some reports
@@ -2487,7 +2512,8 @@ class MAVLinkUAV(UAVBase):
         not_healthy_sensors = sensor_mask & (
             # Python has no proper bitwise negation on unsigned integers
             # so we use XOR instead
-            sys_status.onboard_control_sensors_health ^ 0xFFFFFFFF
+            sys_status.onboard_control_sensors_health
+            ^ 0xFFFFFFFF
         )
 
         has_gyro_error = not_healthy_sensors & (

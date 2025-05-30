@@ -19,6 +19,8 @@ from .specification import (
     get_yaw_setpoints_from_show_specification,
     is_coordinate_system_in_show_specification_geodetic,
     ShowSpecification,
+    get_colors_from_show_specification,
+    get_position_from_show_specification,
 )
 from .trajectory import TrajectorySpecification
 
@@ -41,4 +43,6 @@ __all__ = (
     "SkybrushBinaryShowFile",
     "TrajectoryPlayer",
     "TrajectorySpecification",
+    "get_position_from_show_specification",
+    "get_colors_from_show_specification",
 )
