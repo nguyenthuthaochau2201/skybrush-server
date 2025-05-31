@@ -115,8 +115,6 @@ class EsspShowFile:
     """Byte index of the first block in the show file, `None` if not known yet."""
 
     _header_section_struct: ClassVar[Struct] = Struct("<BBHI")
-    _position_data_struct: ClassVar[Struct] = Struct("<hhh")
-    _color_data_struct: ClassVar[Struct] = Struct("<BBB")
 
     @classmethod
     def create_in_memory(cls, version: int = 1):
@@ -135,6 +133,18 @@ class EsspShowFile:
         if not data:
             if version >= 1 and version < len(_ESSP_FILE_HEADER):
                 data = _ESSP_FILE_HEADER[version]
+                # header size 1
+                data += int(15).to_bytes(1, "little")
+                # path to crc 4
+                data += _RESERVE_BYTE * 4
+                # 2 reserve
+                data += _RESERVE_BYTE * 2
+                # 2 unit millimeter factor
+                data += Struct("e").pack(1.0)
+                # 1 section count
+                data += int(2).to_bytes(1, "little")
+                # 1 section header size
+                data += int(5).to_bytes(1, "little")
             else:
                 raise RuntimeError(f"Unsupported version number: {version}")
         return cls(BytesIO(data))
@@ -223,19 +233,22 @@ class EsspShowFile:
             )
         await self._fp.write(body)
 
-    async def finalize(self) -> None:
-        """Finalizes the file by updating its CRC block (if any)."""
-        if not self._version:
-            if not self._fp.seekable():
-                raise RuntimeError(
-                    "version number not known yet and the binary show file is not seekable"
-                )
+    async def finalize(
+        self,
+    ) -> None:
+        pass
+        # """Finalizes the file by updating its CRC block (if any)."""
+        # if not self._version:
+        #     if not self._fp.seekable():
+        #         raise RuntimeError(
+        #             "version number not known yet and the binary show file is not seekable"
+        #         )
 
-            pos = await self._fp.tell()
-            try:
-                await self._rewind()
-            finally:
-                await self._fp.seek(pos)
+        #     pos = await self._fp.tell()
+        #     try:
+        #         await self._rewind()
+        #     finally:
+        #         await self._fp.seek(pos)
 
         # await self._update_crc32()
 

@@ -2132,7 +2132,7 @@ class MAVLinkUAV(UAVBase):
                 await show_file.add_position(positions)
             if colors:
                 await show_file.add_color(colors)
-            await show_file.finalize()
+            # await show_file.finalize()
             data = show_file.get_contents()
 
         # async with SkybrushBinaryShowFile.create_in_memory() as show_file:
