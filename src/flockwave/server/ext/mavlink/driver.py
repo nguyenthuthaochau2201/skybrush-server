@@ -4,20 +4,20 @@ from __future__ import annotations
 
 from collections import defaultdict
 from colour import Color
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from logging import Logger
 from math import inf, isfinite
 from time import monotonic
-from trio import fail_after, move_on_after, sleep, TooSlowError
+from trio import Event, fail_after, move_on_after, sleep, TooSlowError
 from typing import Any, AsyncIterator, Callable, Optional, Union
 
 from flockwave.gps.time import datetime_to_gps_time_of_week, gps_time_of_week_to_utc
 from flockwave.gps.vectors import GPSCoordinate, VelocityNED
 
-from flockwave.concurrency import aclosing, delayed
+from flockwave.concurrency import delayed
 from flockwave.server.command_handlers import (
     create_calibration_command_handler,
     create_color_command_handler,
@@ -45,8 +45,11 @@ from flockwave.server.show import (
     get_rth_plan_from_show_specification,
     get_trajectory_from_show_specification,
     get_yaw_setpoints_from_show_specification,
+    get_position_from_show_specification,
+    get_colors_from_show_specification,
 )
 from flockwave.server.show.formats import SkybrushBinaryShowFile
+from flockwave.server.show.essp_format import EsspShowFile
 from flockwave.server.types import GCSLogMessageSender
 from flockwave.server.utils import color_to_rgb8_triplet, to_uppercase_string
 from flockwave.server.utils.generic import nop
@@ -969,7 +972,7 @@ class MAVLinkMessageRecord:
     """
 
     message: MAVLinkMessage = None
-    timestamp: float = None
+    timestamp: float = 0
 
     @property
     def age(self) -> float:
@@ -1007,6 +1010,11 @@ class MAVLinkUAV(UAVBase):
 
     Use the `compass_calibration` getter to access this property; this will
     ensure that the compass calibration status object is created on-demand.
+    """
+
+    _connected_event: Event
+    """Event that is emitted when the connection state of the UAV becomes
+    connected.
     """
 
     _connection_state: ConnectionState = ConnectionState.DISCONNECTED
@@ -1098,6 +1106,7 @@ class MAVLinkUAV(UAVBase):
 
         self._autopilot = UnknownAutopilot()
         self._battery = BatteryInfo()
+        self._connected_event = Event()
         self._gps_fix = GPSFix()
         self._last_messages = defaultdict(MAVLinkMessageRecord)  # type: ignore
         self._preflight_status = PreflightCheckInfo()
@@ -1210,6 +1219,12 @@ class MAVLinkUAV(UAVBase):
 
         if not success:
             raise RuntimeError(f"Failed to calibrate component: {component!r}")
+
+    def can_handle_firmware_update_target(self, target_id: str) -> bool:
+        """Returns whether the virtual UAV can handle uploads with the given
+        target.
+        """
+        return self._autopilot.can_handle_firmware_update_target(target_id)
 
     async def clear_scheduled_takeoff_time(self) -> None:
         """Clears the scheduled takeoff time of the UAV."""
@@ -1517,6 +1532,14 @@ class MAVLinkUAV(UAVBase):
                 await self.set_led_color(color, channel=channel, duration=2)
         else:
             raise NotSupportedError
+
+    async def handle_firmware_update(
+        self, target_id: str, blob: bytes
+    ) -> AsyncIterator[Progress]:
+        async for event in self._autopilot.handle_firmware_update(
+            self, target_id, blob
+        ):
+            yield event
 
     def handle_message_autopilot_version(self, message: MAVLinkMessage):
         """Handles an incoming MAVLink AUTOPILOT_VERSION message targeted at
@@ -1852,6 +1875,24 @@ class MAVLinkUAV(UAVBase):
         else:
             self._notify_rebooted_by_us()
 
+    async def reboot_after_update(self, channel: str = Channel.PRIMARY) -> None:
+        """Reboots the autopilot of the UAV and keeps it in the bootloader
+        until upgraded.
+
+        This function should be called after an over-the-air update if the UAV
+        supports over-the-air updates.
+        """
+        success = await self.driver.send_command_long(
+            self,
+            MAVCommand.PREFLIGHT_REBOOT_SHUTDOWN,
+            3,  # reboot autopilot and stay in bootloader until updated
+            channel=channel,
+        )
+        if not success:
+            raise RuntimeError("Reset and update command failed")
+        else:
+            self._notify_rebooted_by_us()
+
     async def reload_show(self) -> None:
         """Asks the UAV to reload the current drone show file."""
         # param1 = 0 if we want to reload the show file
@@ -2073,19 +2114,41 @@ class MAVLinkUAV(UAVBase):
         rth_plan = get_rth_plan_from_show_specification(show)
         yaw_setpoints = get_yaw_setpoints_from_show_specification(show)
 
-        async with SkybrushBinaryShowFile.create_in_memory() as show_file:
-            await show_file.add_trajectory(trajectory)
-            await show_file.add_light_program(light_program)
-            if rth_plan:
-                await show_file.add_rth_plan(rth_plan)
-            if yaw_setpoints:
-                await show_file.add_yaw_setpoints(yaw_setpoints)
-            await show_file.finalize()
+        colors = get_colors_from_show_specification(show)
+        positions = get_position_from_show_specification(show)
+
+        position_data_size = len(positions) if positions else 0
+        color_data_size = len(colors) if colors else 0
+        # update later
+        color_fps = 15
+        position_fps = 15
+
+        async with EsspShowFile.create_in_memory() as show_file:
+            await show_file.add_header_section_block(
+                1, position_fps, position_data_size
+            )
+            await show_file.add_header_section_block(2, color_fps, color_data_size)
+            if positions:
+                await show_file.add_position(positions)
+            if colors:
+                await show_file.add_color(colors)
+            # await show_file.finalize()
             data = show_file.get_contents()
+
+        # async with SkybrushBinaryShowFile.create_in_memory() as show_file:
+        #     await show_file.add_trajectory(trajectory)
+        #     await show_file.add_light_program(light_program)
+        #     if rth_plan:
+        #         await show_file.add_rth_plan(rth_plan)
+        #     if yaw_setpoints:
+        #         await show_file.add_yaw_setpoints(yaw_setpoints)
+        #     await show_file.finalize()
+        #     data = show_file.get_contents()
 
         # Upload show file
         async with aclosing(MAVFTP.for_uav(self)) as ftp:
-            await ftp.put(data, "/collmot/show.skyb")
+            # await ftp.put(data, "/collmot/show.skyb")
+            await ftp.put(data, "collmot/drone.essp")
 
         # We give some time for the filesystem to flush caches etc before
         # asking the drone to reload the show file. There were some reports
@@ -2145,6 +2208,15 @@ class MAVLinkUAV(UAVBase):
         # Ask drone to reload show file now that we are done with everything
         # else
         await self.reload_show()
+
+    async def wait_until_connected(self) -> None:
+        """Waits until the UAV becomes connected (i.e. when we see the next
+        heartbeat message from the drone).
+
+        Returns immediately if the drone is currently considered connected.
+        """
+        if self._connection_state is not ConnectionState.CONNECTED:
+            await self._connected_event.wait()
 
     def _configure_data_streams_soon(self, force: bool = False) -> None:
         """Schedules a call to configure the data streams that we want to receive
@@ -2282,7 +2354,7 @@ class MAVLinkUAV(UAVBase):
         # `self._request_autopilot_capabilities()` for an explanation.
 
         if self.driver.mandatory_custom_mode is not None:
-            # Don't set the mode immediately because the drone might now
+            # Don't set the mode immediately because the drone might not
             # respond right after bootup
             self.driver.run_in_background(self._configure_mandatory_custom_mode)
 
@@ -2367,6 +2439,11 @@ class MAVLinkUAV(UAVBase):
                 self._first_connection = False
                 self._handle_reboot()
 
+            # Send "connected" event to listeners
+            event = self._connected_event
+            self._connected_event = Event()
+            event.set()
+
     def _store_message(self, message: MAVLinkMessage) -> None:
         """Stores the given MAVLink message in the dictionary that maps
         MAVLink message types to their most recent versions that were seen
@@ -2435,7 +2512,8 @@ class MAVLinkUAV(UAVBase):
         not_healthy_sensors = sensor_mask & (
             # Python has no proper bitwise negation on unsigned integers
             # so we use XOR instead
-            sys_status.onboard_control_sensors_health ^ 0xFFFFFFFF
+            sys_status.onboard_control_sensors_health
+            ^ 0xFFFFFFFF
         )
 
         has_gyro_error = not_healthy_sensors & (

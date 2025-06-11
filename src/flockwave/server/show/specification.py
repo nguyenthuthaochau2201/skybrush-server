@@ -4,6 +4,9 @@ from flockwave.gps.vectors import FlatEarthToGPSCoordinateTransformation
 
 from .trajectory import TrajectorySpecification
 from .yaw import YawSetpointList
+from .position import PositionList
+from .color import ColorList
+
 
 __all__ = (
     "get_altitude_reference_from_show_specification",
@@ -15,6 +18,8 @@ __all__ = (
     "get_yaw_setpoints_from_show_specification",
     "is_coordinate_system_in_show_specification_geodetic",
     "ShowSpecification",
+    "get_position_from_show_specification",
+    "get_colors_from_show_specification",
 )
 
 
@@ -134,3 +139,27 @@ def is_coordinate_system_in_show_specification_geodetic(
         return True
 
     return False
+
+
+def get_position_from_show_specification(
+    show: ShowSpecification,
+) -> Optional[PositionList]:
+    positions = show.get("positions")
+    if positions:
+        retval = PositionList.from_json(positions)
+    else:
+        retval = None
+
+    return retval
+
+
+def get_colors_from_show_specification(
+    show: ShowSpecification,
+) -> Optional[ColorList]:
+    colors = show.get("colors")
+    if colors:
+        retval = ColorList.from_json(colors)
+    else:
+        retval = None
+
+    return retval
