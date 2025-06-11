@@ -1,4 +1,4 @@
-from contextlib import aclosing
+from async_generator import aclosing
 from time import monotonic, time
 from trio import sleep
 from trio_util import RepeatedEvent

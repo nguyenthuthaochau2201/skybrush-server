@@ -4,20 +4,20 @@ from __future__ import annotations
 
 from collections import defaultdict
 from colour import Color
-from contextlib import aclosing, asynccontextmanager
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from logging import Logger
 from math import inf, isfinite
 from time import monotonic
-from trio import Event, fail_after, move_on_after, sleep, TooSlowError
+from trio import fail_after, move_on_after, sleep, TooSlowError
 from typing import Any, AsyncIterator, Callable, Optional, Union
 
 from flockwave.gps.time import datetime_to_gps_time_of_week, gps_time_of_week_to_utc
 from flockwave.gps.vectors import GPSCoordinate, VelocityNED
 
-from flockwave.concurrency import delayed
+from flockwave.concurrency import aclosing, delayed
 from flockwave.server.command_handlers import (
     create_calibration_command_handler,
     create_color_command_handler,
@@ -969,7 +969,7 @@ class MAVLinkMessageRecord:
     """
 
     message: MAVLinkMessage = None
-    timestamp: float = 0
+    timestamp: float = None
 
     @property
     def age(self) -> float:
@@ -1007,11 +1007,6 @@ class MAVLinkUAV(UAVBase):
 
     Use the `compass_calibration` getter to access this property; this will
     ensure that the compass calibration status object is created on-demand.
-    """
-
-    _connected_event: Event
-    """Event that is emitted when the connection state of the UAV becomes
-    connected.
     """
 
     _connection_state: ConnectionState = ConnectionState.DISCONNECTED
@@ -1103,7 +1098,6 @@ class MAVLinkUAV(UAVBase):
 
         self._autopilot = UnknownAutopilot()
         self._battery = BatteryInfo()
-        self._connected_event = Event()
         self._gps_fix = GPSFix()
         self._last_messages = defaultdict(MAVLinkMessageRecord)  # type: ignore
         self._preflight_status = PreflightCheckInfo()
@@ -1216,12 +1210,6 @@ class MAVLinkUAV(UAVBase):
 
         if not success:
             raise RuntimeError(f"Failed to calibrate component: {component!r}")
-
-    def can_handle_firmware_update_target(self, target_id: str) -> bool:
-        """Returns whether the virtual UAV can handle uploads with the given
-        target.
-        """
-        return self._autopilot.can_handle_firmware_update_target(target_id)
 
     async def clear_scheduled_takeoff_time(self) -> None:
         """Clears the scheduled takeoff time of the UAV."""
@@ -1529,14 +1517,6 @@ class MAVLinkUAV(UAVBase):
                 await self.set_led_color(color, channel=channel, duration=2)
         else:
             raise NotSupportedError
-
-    async def handle_firmware_update(
-        self, target_id: str, blob: bytes
-    ) -> AsyncIterator[Progress]:
-        async for event in self._autopilot.handle_firmware_update(
-            self, target_id, blob
-        ):
-            yield event
 
     def handle_message_autopilot_version(self, message: MAVLinkMessage):
         """Handles an incoming MAVLink AUTOPILOT_VERSION message targeted at
@@ -1872,24 +1852,6 @@ class MAVLinkUAV(UAVBase):
         else:
             self._notify_rebooted_by_us()
 
-    async def reboot_after_update(self, channel: str = Channel.PRIMARY) -> None:
-        """Reboots the autopilot of the UAV and keeps it in the bootloader
-        until upgraded.
-
-        This function should be called after an over-the-air update if the UAV
-        supports over-the-air updates.
-        """
-        success = await self.driver.send_command_long(
-            self,
-            MAVCommand.PREFLIGHT_REBOOT_SHUTDOWN,
-            3,  # reboot autopilot and stay in bootloader until updated
-            channel=channel,
-        )
-        if not success:
-            raise RuntimeError("Reset and update command failed")
-        else:
-            self._notify_rebooted_by_us()
-
     async def reload_show(self) -> None:
         """Asks the UAV to reload the current drone show file."""
         # param1 = 0 if we want to reload the show file
@@ -2184,15 +2146,6 @@ class MAVLinkUAV(UAVBase):
         # else
         await self.reload_show()
 
-    async def wait_until_connected(self) -> None:
-        """Waits until the UAV becomes connected (i.e. when we see the next
-        heartbeat message from the drone).
-
-        Returns immediately if the drone is currently considered connected.
-        """
-        if self._connection_state is not ConnectionState.CONNECTED:
-            await self._connected_event.wait()
-
     def _configure_data_streams_soon(self, force: bool = False) -> None:
         """Schedules a call to configure the data streams that we want to receive
         from the UAV, as soon as possible.
@@ -2329,7 +2282,7 @@ class MAVLinkUAV(UAVBase):
         # `self._request_autopilot_capabilities()` for an explanation.
 
         if self.driver.mandatory_custom_mode is not None:
-            # Don't set the mode immediately because the drone might not
+            # Don't set the mode immediately because the drone might now
             # respond right after bootup
             self.driver.run_in_background(self._configure_mandatory_custom_mode)
 
@@ -2413,11 +2366,6 @@ class MAVLinkUAV(UAVBase):
 
                 self._first_connection = False
                 self._handle_reboot()
-
-            # Send "connected" event to listeners
-            event = self._connected_event
-            self._connected_event = Event()
-            event.set()
 
     def _store_message(self, message: MAVLinkMessage) -> None:
         """Stores the given MAVLink message in the dictionary that maps

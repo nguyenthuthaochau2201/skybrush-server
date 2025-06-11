@@ -5,51 +5,6 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.26.2] - 2025-05-09
-
-No user-facing changes.
-
-## [2.26.1] - 2025-05-09
-
-No user-facing changes.
-
-## [2.26.0] - 2025-04-28
-
-### Added
-
-- Over-the-air firmware updates are now supported on MAVLink drones running
-  ArduPilot if the bootloader of the drone is capable of flashing the new
-  firmware from an image file uploaded with MAVFTP. Currently not all flight
-  controllers support this; refer to the corresponding page on the
-  [ArduPilot documentation site](https://ardupilot.org/copter/docs/common-install-sdcard.html).
-
-### Changed
-
-- RTK correction packets are not sent on MAVLink networks when the server has
-  not seen a MAVLink heartbeat from at least one drone in that network. This
-  allows one to set up multiple MAVLink networks in the configuration file in
-  advance; the server will send RTK correction packets only to those networks
-  that are actually used.
-
-## [2.25.2] - 2025-04-17
-
-### Fixed
-
-- Virtual UAVs simulated from the `virtual_uavs` extension now have proper
-  horizontal velocity displays.
-
-- The MIDI timecode extension is now more resilient to the disconnection of the
-  MIDI timecode device. Disconnecting a device while the server is running will
-  stop the clock and restart it when the device is connected again.
-
-## [2.25.1] - 2025-03-24
-
-### Fixed
-
-- Sidekick and other extensions interested in fragmented MAVLink RTK correction
-  packets are now notified only once for each such packet instead of as many
-  times as the number of networks.
-
 ## [2.25.0] - 2025-03-18
 
 ### Added

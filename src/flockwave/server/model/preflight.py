@@ -110,7 +110,6 @@ class PreflightCheckInfo(metaclass=ModelMeta):
 
     def __init__(self):
         self._in_progress = False
-        self.message = ""
         self.result = PreflightCheckResult.OFF
         self.items = []
         self.update_summary()

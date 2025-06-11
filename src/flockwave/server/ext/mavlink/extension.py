@@ -5,13 +5,12 @@ MAVLink protocol.
 from __future__ import annotations
 
 from collections import OrderedDict
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack
 from functools import partial
 from logging import Logger
-from typing import Iterator, cast, Optional, TYPE_CHECKING
+from typing import cast, Optional, TYPE_CHECKING
 
 from flockwave.server.ext.base import UAVExtension
-from flockwave.server.ext.mavlink.fw_upload import FirmwareUpdateTarget
 from flockwave.server.model.uav import UAV
 from flockwave.server.registries.errors import RegistryFull
 from flockwave.server.utils import optional_int, overridden
@@ -21,7 +20,6 @@ from .enums import MAVSeverity
 from .errors import InvalidSigningKeyError
 from .network import MAVLinkNetwork
 from .rssi import RSSIMode
-from .rtk import RTKCorrectionPacketSignalManager
 from .tasks import check_uavs_alive
 from .types import (
     MAVLinkMessage,
@@ -60,9 +58,6 @@ class MAVLinkDronesExtension(UAVExtension[MAVLinkDriver]):
     log: Logger
 
     _networks: dict[str, MAVLinkNetwork]
-    """Dictionary mapping network IDs to the MAVLink networks managed by this
-    extension.
-    """
 
     def __init__(self):
         super().__init__()
@@ -106,6 +101,7 @@ class MAVLinkDronesExtension(UAVExtension[MAVLinkDriver]):
         # Get a handle to the signals extension that we will need
         signals = app.import_api("signals")
         status_summary_signal = signals.get("mavlink:status_summary")
+        rtk_packet_fragments_signal = signals.get("mavlink:rtk_fragments")
 
         # Create self._uavs only here and not in the constructor; this is to
         # ensure that we cannot accidentally register a UAV when the extension
@@ -118,13 +114,10 @@ class MAVLinkDronesExtension(UAVExtension[MAVLinkDriver]):
             "driver": self._driver,
             "log": self.log,
             "register_uav": self._register_uav,
+            "rtk_packet_fragments_signal": rtk_packet_fragments_signal,
             "supervisor": app.supervise,
             "use_connection": app.connection_registry.use,
         }
-
-        # Create an object responsible for distributing RTK correction packets
-        # to other extensions that are interested in them
-        rtk_correction_packet_signal_manager = RTKCorrectionPacketSignalManager()
 
         # Create a cleanup context and run the extension
         with ExitStack() as stack:
@@ -141,13 +134,6 @@ class MAVLinkDronesExtension(UAVExtension[MAVLinkDriver]):
                         "show:lights_updated": self._on_show_light_configuration_changed,
                     }
                 )
-            )
-
-            # Connect the RTK correction packet signal manager to the signals API
-            # so it knows which signal to dispatch when a new RTK correction
-            # packet is to be forwarded to other extensions
-            stack.enter_context(
-                rtk_correction_packet_signal_manager.use(signals, log=self.log)
             )
 
             # Forward the current start configuration for the drones in this network.
@@ -176,20 +162,6 @@ class MAVLinkDronesExtension(UAVExtension[MAVLinkDriver]):
             finally:
                 for uav in uavs:
                     app.object_registry.remove(uav)
-
-    @staticmethod
-    @contextmanager
-    def use_firmware_update_support(api) -> Iterator[None]:
-        """Enhancer context manager that adds support for remote firmware updates
-        to virtual UAVs.
-        """
-        with ExitStack() as stack:
-            for target_id in FirmwareUpdateTarget:
-                target = api.create_target(
-                    id=target_id.value, name=target_id.describe()
-                )
-                stack.enter_context(api.use_target(target))
-            yield
 
     async def _broadcast_packet(
         self,
@@ -335,7 +307,6 @@ class MAVLinkDronesExtension(UAVExtension[MAVLinkDriver]):
         if not self._networks:
             return
 
-        # Forward the packet to all networks
         for name, network in self._networks.items():
             try:
                 network.enqueue_rtk_correction_packet(packet)
@@ -507,7 +478,6 @@ RSSI_MODE_SCHEMA = {
 construct = MAVLinkDronesExtension
 dependencies = ("show", "signals")
 description = "Support for drones that use the MAVLink protocol"
-enhancers = {"firmware_update": MAVLinkDronesExtension.use_firmware_update_support}
 schema = {
     "properties": {
         "networks": {

@@ -1,10 +1,6 @@
 """Implementations of autopilot-specific functionality."""
 
-from __future__ import annotations
-
-from abc import ABC, abstractmethod
-from contextlib import aclosing
-from time import monotonic
+from abc import ABCMeta, abstractmethod, abstractproperty
 from trio import sleep, TooSlowError
 from typing import AsyncIterator, Type, Union, TYPE_CHECKING
 
@@ -32,8 +28,6 @@ from .enums import (
     MAVSysStatusSensor,
 )
 from .errors import UnknownFlightModeError
-from .ftp import MAVFTP
-from .fw_upload import FirmwareUpdateResult, FirmwareUpdateTarget
 from .geofence import GeofenceManager, GeofenceType
 from .types import MAVLinkFlightModeNumbers, MAVLinkMessage
 from .utils import (
@@ -46,7 +40,7 @@ if TYPE_CHECKING:
     from .driver import MAVLinkUAV
 
 
-class Autopilot(ABC):
+class Autopilot(metaclass=ABCMeta):
     """Interface specification and generic entry point for autopilot objects."""
 
     name = "Abstract autopilot"
@@ -114,7 +108,9 @@ class Autopilot(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def calibrate_accelerometer(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_accelerometer(
+        self, uav: "MAVLinkUAV"
+    ) -> AsyncIterator[Progress]:
         """Calibrates the accelerometers of the UAV.
 
         Yields:
@@ -130,7 +126,7 @@ class Autopilot(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def calibrate_compass(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_compass(self, uav: "MAVLinkUAV") -> AsyncIterator[Progress]:
         """Calibrates the compasses of the UAV.
 
         Yields:
@@ -145,15 +141,8 @@ class Autopilot(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def can_handle_firmware_update_target(self, target_id: str) -> bool:
-        """Returns whether the UAV can handle firmware uploads with the given
-        target.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     async def configure_geofence(
-        self, uav: MAVLinkUAV, configuration: GeofenceConfigurationRequest
+        self, uav: "MAVLinkUAV", configuration: GeofenceConfigurationRequest
     ) -> None:
         """Updates the geofence configuration on the autopilot to match the
         given configuration object.
@@ -171,7 +160,7 @@ class Autopilot(ABC):
 
     @abstractmethod
     async def configure_safety(
-        self, uav: MAVLinkUAV, configuration: SafetyConfigurationRequest
+        self, uav: "MAVLinkUAV", configuration: SafetyConfigurationRequest
     ) -> None:
         """Updates the safety configuration on the autopilot to match the
         given configuration object.
@@ -215,7 +204,7 @@ class Autopilot(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def get_geofence_status(self, uav: MAVLinkUAV) -> GeofenceStatus:
+    async def get_geofence_status(self, uav: "MAVLinkUAV") -> GeofenceStatus:
         """Retrieves a full geofence status object from the drone.
 
         Parameters:
@@ -232,33 +221,7 @@ class Autopilot(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def handle_firmware_update(
-        self, uav: MAVLinkUAV, target_id: str, blob: bytes
-    ) -> AsyncIterator[Progress]:
-        """Handles a firmware update request on the UAV.
-
-        This function is called only when the UAV is known to be able to handle
-        a firmware update with the given target ID.
-
-        Args:
-            target_id: the target ID of the firmware update
-            blob: the firmware update blob
-
-        Yields:
-            Progress_ objects to indicate the progress of the firmware update
-
-        Raises:
-            RuntimeError: if there was an error during the firmware update
-            NotImplementedError: if we have not implemented support for
-                firmware updates (but we plan to do so)
-            NotSupportedError: if the autopilot does not support firmware
-                updates
-        """
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
+    @abstractproperty
     def is_battery_percentage_reliable(self) -> bool:
         """Returns whether the autopilot provides reliable battery capacity
         percentages.
@@ -308,24 +271,21 @@ class Autopilot(ABC):
         self.capabilities = capabilities
         return self
 
-    @property
-    @abstractmethod
+    @abstractproperty
     def supports_local_frame(self) -> bool:
         """Returns whether the autopilot understands MAVLink commands sent in
         a local coordinate frame.
         """
         raise NotImplementedError
 
-    @property
-    @abstractmethod
+    @abstractproperty
     def supports_repositioning(self) -> bool:
         """Returns whether the autopilot understands the MAVLink MAV_CMD_DO_REPOSITION
         command.
         """
         raise NotImplementedError
 
-    @property
-    @abstractmethod
+    @abstractproperty
     def supports_scheduled_takeoff(self) -> bool:
         """Returns whether the autopilot supports scheduled takeoffs."""
         raise NotImplementedError
@@ -336,22 +296,21 @@ class UnknownAutopilot(Autopilot):
 
     name = "Unknown autopilot"
 
-    async def calibrate_accelerometer(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_accelerometer(
+        self, uav: "MAVLinkUAV"
+    ) -> AsyncIterator[Progress]:
         raise NotSupportedError
 
-    async def calibrate_compass(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_compass(self, uav: "MAVLinkUAV") -> AsyncIterator[Progress]:
         raise NotSupportedError
-
-    def can_handle_firmware_update_target(self, target_id: str) -> bool:
-        return False
 
     async def configure_geofence(
-        self, uav: MAVLinkUAV, configuration: GeofenceConfigurationRequest
+        self, uav: "MAVLinkUAV", configuration: GeofenceConfigurationRequest
     ) -> None:
         raise NotSupportedError
 
     async def configure_safety(
-        self, uav: MAVLinkUAV, configuration: SafetyConfigurationRequest
+        self, uav: "MAVLinkUAV", configuration: SafetyConfigurationRequest
     ) -> None:
         raise NotSupportedError
 
@@ -363,12 +322,7 @@ class UnknownAutopilot(Autopilot):
     def get_flight_mode_numbers(self, mode: str) -> MAVLinkFlightModeNumbers:
         raise NotSupportedError
 
-    async def get_geofence_status(self, uav: MAVLinkUAV) -> GeofenceStatus:
-        raise NotSupportedError
-
-    async def handle_firmware_update(
-        self, uav: MAVLinkUAV, target_id: str, blob: bytes
-    ) -> None:
+    async def get_geofence_status(self, uav: "MAVLinkUAV") -> GeofenceStatus:
         raise NotSupportedError
 
     @property
@@ -490,22 +444,21 @@ class PX4(Autopilot):
         # anywhere
         return False
 
-    async def calibrate_accelerometer(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_accelerometer(
+        self, uav: "MAVLinkUAV"
+    ) -> AsyncIterator[Progress]:
         raise NotImplementedError
 
-    async def calibrate_compass(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_compass(self, uav: "MAVLinkUAV") -> AsyncIterator[Progress]:
         raise NotImplementedError
-
-    def can_handle_firmware_update_target(self, target_id: str) -> bool:
-        return False
 
     async def configure_geofence(
-        self, uav: MAVLinkUAV, configuration: GeofenceConfigurationRequest
+        self, uav: "MAVLinkUAV", configuration: GeofenceConfigurationRequest
     ) -> None:
         raise NotImplementedError
 
     async def configure_safety(
-        self, uav: MAVLinkUAV, configuration: SafetyConfigurationRequest
+        self, uav: "MAVLinkUAV", configuration: SafetyConfigurationRequest
     ) -> None:
         raise NotImplementedError
 
@@ -517,20 +470,18 @@ class PX4(Autopilot):
 
         return numbers
 
-    async def get_geofence_status(self, uav: MAVLinkUAV) -> GeofenceStatus:
+    async def get_geofence_status(self, uav: "MAVLinkUAV") -> GeofenceStatus:
         raise NotImplementedError
-
-    async def handle_firmware_update(
-        self, uav: MAVLinkUAV, target_id: str, blob: bytes
-    ) -> None:
-        raise NotSupportedError
 
     @property
     def is_battery_percentage_reliable(self) -> bool:
         """Returns whether the autopilot provides reliable battery capacity
         percentages.
         """
-        return True
+        # TODO(ntamas): PX4 is actually much better at it than ArduPilot;
+        # switch this to True once the user can configure on the UI whether
+        # he wants to see percentages or voltages
+        return False
 
     def is_prearm_check_in_progress(
         self, heartbeat: MAVLinkMessage, sys_status: MAVLinkMessage
@@ -651,7 +602,9 @@ class ArduPilot(Autopilot):
         else:
             return False
 
-    async def calibrate_accelerometer(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_accelerometer(
+        self, uav: "MAVLinkUAV"
+    ) -> AsyncIterator[Progress]:
         # Reset our internal state object of the accelerometer calibration procedure
         uav.accelerometer_calibration.reset()
 
@@ -712,7 +665,7 @@ class ArduPilot(Autopilot):
 
         yield Progress.done("Acceelerometer calibration successful.")
 
-    async def calibrate_compass(self, uav: MAVLinkUAV) -> AsyncIterator[Progress]:
+    async def calibrate_compass(self, uav: "MAVLinkUAV") -> AsyncIterator[Progress]:
         calibration_messages = {
             int(MAVMessageType.MAG_CAL_PROGRESS): 1.0,
             int(MAVMessageType.MAG_CAL_REPORT): 1.0,
@@ -784,11 +737,8 @@ class ArduPilot(Autopilot):
 
         yield Progress.done("Compass calibration successful.")
 
-    def can_handle_firmware_update_target(self, target_id: str) -> bool:
-        return target_id == FirmwareUpdateTarget.ABIN.value
-
     async def configure_geofence(
-        self, uav: MAVLinkUAV, configuration: GeofenceConfigurationRequest
+        self, uav: "MAVLinkUAV", configuration: GeofenceConfigurationRequest
     ) -> None:
         fence_type = GeofenceType.OFF
 
@@ -942,7 +892,7 @@ class ArduPilot(Autopilot):
 
         raise UnknownFlightModeError(mode)
 
-    async def get_geofence_status(self, uav: MAVLinkUAV) -> GeofenceStatus:
+    async def get_geofence_status(self, uav: "MAVLinkUAV") -> GeofenceStatus:
         status = GeofenceStatus()
 
         # Generic stuff comes here
@@ -966,99 +916,6 @@ class ArduPilot(Autopilot):
         status.actions = list(self._geofence_actions.get(int(value), ()))
 
         return status
-
-    async def handle_firmware_update(
-        self, uav: MAVLinkUAV, target_id: str, blob: bytes
-    ) -> AsyncIterator[Progress]:
-        assert self.can_handle_firmware_update_target(target_id)
-
-        # TODO(ntamas): validate .abin firmware
-
-        # Upload firmware
-        async with aclosing(MAVFTP.for_uav(uav)) as ftp:
-            async with ftp.put_gen(blob, "/ardupilot.abin") as gen:
-                async for progress in gen:
-                    # Scale progress down to a max of 90% -- the remaining
-                    # 10% will be rebooting and checking the result
-                    percentage = progress.percentage
-                    if percentage is not None:
-                        yield progress.update(percentage=int(percentage * 0.9))
-
-        # Progress is now at 90%. Ask for a reboot to the bootloader
-        yield Progress(percentage=90)
-        await uav.reboot_after_update()
-
-        # Wait until the UAV becomes disconnected, but at least two seconds
-        start = monotonic()
-        while True:
-            await sleep(0.5)
-
-            dt = monotonic() - start
-            if dt >= 2 and not uav.is_connected:
-                break
-            if dt >= 5:
-                raise RuntimeError("UAV failed to reboot after uploading new firmware")
-
-        # We have no way to know when the update is finished, so we pretend
-        # that it is going to take about a minute. We wait for at most two
-        # minutes and update the progress slowly.
-        start = monotonic()
-        while not uav.is_connected:
-            await sleep(0.5)
-
-            dt = monotonic() - start
-            if dt > 120:
-                # We waited for two minutes, so we give up
-                raise RuntimeError("Firmware update timed out")
-            elif dt >= 100:
-                # Pretend a slower percentage update from 98% onwards
-                yield Progress(percentage=99)
-            elif dt >= 80:
-                # Pretend a slower percentage update from 98% onwards
-                yield Progress(percentage=98)
-            else:
-                # Pretend a percentage update of 1% every 10 seconds
-                yield Progress(percentage=90 + int(dt) // 10)
-
-        # Wait 2 more seconds to make sure that the initialization process
-        # has finished on the drone
-        yield Progress(percentage=99)
-        await sleep(2)
-
-        # Check whether the firmware update was successful
-        async with aclosing(MAVFTP.for_uav(uav)) as ftp:
-            async with ftp.ls("/") as gen:
-                entries: list[str] = []
-                async for entry in gen:
-                    entries.append(entry.name.lower())
-
-            if "ardupilot.abin" in entries:
-                result = FirmwareUpdateResult.UNSUPPORTED
-            elif "ardupilot-verify.abin" in entries:
-                result = FirmwareUpdateResult.FAILED_TO_VERIFY
-            elif "ardupilot-verify-failed.abin" in entries:
-                result = FirmwareUpdateResult.INVALID
-            elif "ardupilot-flash.abin" in entries:
-                result = FirmwareUpdateResult.FLASHING_FAILED
-            elif "ardupilot-flashed.abin" in entries:
-                result = FirmwareUpdateResult.SUCCESS
-            else:
-                result = FirmwareUpdateResult.UNSUPPORTED
-
-            if not result.successful:
-                raise RuntimeError(result.describe())
-
-            # Try to delete the firmware file now that it is not needed but do
-            # not raise an error if it fails
-            try:
-                await ftp.rm("/ardupilot-flashed.abin")
-            except Exception:
-                uav.driver.log.warning(
-                    "Failed to delete the firmware file after update",
-                    extra={"id": log_id_for_uav(uav)},
-                )
-
-        yield Progress(percentage=100)
 
     def is_prearm_check_in_progress(
         self, heartbeat: MAVLinkMessage, sys_status: MAVLinkMessage

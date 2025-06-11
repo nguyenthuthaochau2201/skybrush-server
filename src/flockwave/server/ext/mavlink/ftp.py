@@ -1,8 +1,6 @@
 """Implementation of the MAVFTP protocol on top of a MAVLink connection."""
 
-from __future__ import annotations
-
-from contextlib import aclosing, asynccontextmanager
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from enum import Enum, IntEnum
 from functools import partial
@@ -11,10 +9,9 @@ from itertools import cycle, islice
 from pathlib import PurePosixPath
 from random import randint
 from struct import Struct
-from trio import as_safe_channel, fail_after, move_on_after, TooSlowError, wrap_file
+from trio import fail_after, move_on_after, TooSlowError, wrap_file
 from typing import (
-    TYPE_CHECKING,
-    AsyncGenerator,
+    AsyncIterable,
     AsyncIterator,
     Awaitable,
     Callable,
@@ -24,13 +21,10 @@ from typing import (
     Union,
 )
 
-from flockwave.server.model.commands import Progress
+from flockwave.concurrency import aclosing
 from flockwave.server.show.utils import crc32_mavftp as crc32
 
 from .types import MAVLinkMessage, spec
-
-if TYPE_CHECKING:
-    from .driver import MAVLinkUAV
 
 __all__ = ("MAVFTP",)
 
@@ -157,7 +151,7 @@ class MAVFTPError(RuntimeError):
 
 class OperationNotAcknowledgedError(MAVFTPError):
     def __init__(self, code: int, errno: Optional[int] = None):
-        super().__init__(MAVFTPErrorCode.to_string(code, errno))  # type: ignore
+        super().__init__(MAVFTPErrorCode.to_string(code, errno))
         self.code = code
 
 
@@ -411,7 +405,7 @@ class MAVFTP:
     """An iterator yielding sequence numbers for the connection."""
 
     @classmethod
-    def for_uav(cls, uav: MAVLinkUAV):
+    def for_uav(cls, uav):
         """Constructs a MAVFTP connection object to the given UAV."""
         sender = partial(uav.driver.send_packet, target=uav)
         return cls(sender)
@@ -498,8 +492,7 @@ class MAVFTP:
                 if len(chunk) < bytes_requested:
                     got_eof = True
 
-    @as_safe_channel
-    async def ls(self, path: FTPPath = ".") -> AsyncGenerator[ListingEntry, None]:
+    async def ls(self, path: FTPPath = ".") -> AsyncIterable[ListingEntry]:
         """Lists the contents of a directory on the PixHawk.
 
         Yields:
@@ -545,9 +538,7 @@ class MAVFTP:
             else:
                 raise
 
-    async def put(
-        self, data: bytes, remote_path: FTPPath, parents: bool = False
-    ) -> None:
+    async def put(self, fp, remote_path: FTPPath, parents: bool = False) -> None:
         """Uploads a file at a local path to the given remote path.
 
         Parameters:
@@ -556,33 +547,8 @@ class MAVFTP:
             remote_path: remote folder where the file should be uploaded
             parents: whether to create any parent directories automatically
         """
-        async with self.put_gen(data, remote_path, parents=parents) as progress:
-            # This is a generator, so we need to consume it to actually
-            # upload the file
-            async for _ in progress:
-                pass
-
-    @as_safe_channel
-    async def put_gen(
-        self, data: bytes, remote_path: FTPPath, *, parents: bool = False
-    ) -> AsyncGenerator[Progress, None]:
-        """Uploads a file at a local path to the given remote path.
-
-        Due to how Python's async generator cleanup works, this method has to
-        be used as a context manager first before iterating over the progress
-        updates.
-
-        Parameters:
-            fp: async file-like object containing the data to be uploaded, or a
-                raw bytes object
-            remote_path: remote folder where the file should be uploaded
-            parents: whether to create any parent directories automatically
-
-        Yields:
-            progress updates about the state of the upload process
-        """
-        fp = wrap_file(BytesIO(data))
-        total_length = len(data)
+        if isinstance(fp, bytes):
+            fp = wrap_file(BytesIO(fp))
 
         remote_path = self._resolve(remote_path)
         if parents:
@@ -595,22 +561,13 @@ class MAVFTP:
         reply = await self._send_and_wait(message)
 
         expected_crc = 0
-        offset = 0
-
-        yield Progress(percentage=0)
-        previous_progress = 0
-
         async with self._open_session(reply.session_id) as session:
+            offset = 0
             while True:
                 data = await fp.read(_MAVFTP_CHUNK_SIZE)
                 if data:
                     offset += await session.write(data=data, offset=offset)
                     expected_crc = crc32(data, expected_crc)
-                    progress = offset * 100 // total_length
-                    if progress > previous_progress:
-                        yield Progress(percentage=progress)
-                        previous_progress = progress
-
                 else:
                     break
 
@@ -621,8 +578,6 @@ class MAVFTP:
                     expected_crc, observed_crc
                 )
             )
-
-        yield Progress(percentage=100)
 
     async def rm(self, path: FTPPath) -> None:
         """Removes a file at the given path in the MAVFTP session."""
@@ -655,7 +610,6 @@ class MAVFTP:
         # implementation of the ArduPilot SITL would let us "escape" the
         # directory the SITL simulator was started from, so we always strip the
         # leading slash
-        assert isinstance(name, str)
         return self._to_ftp_path(self._path / name)
 
     async def _send_and_wait(

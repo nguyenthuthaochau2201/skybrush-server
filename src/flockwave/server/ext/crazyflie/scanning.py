@@ -2,7 +2,6 @@
 of a Crazyflie address space for Crazyflie drones.
 """
 
-from contextlib import aclosing
 from errno import ENODEV
 from functools import partial
 from time import monotonic
@@ -18,6 +17,7 @@ from typing import (
     Union,
 )
 
+from flockwave.concurrency import aclosing
 from flockwave.server.utils import longest_common_prefix
 
 from .connection import CrazyradioConnection
