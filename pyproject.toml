@@ -51,7 +51,7 @@ flockwave-ext = { version = "^1.26.0", source = "fury" }
 flockwave-flockctrl = { version = "^3.4.0", source = "collmot", optional = true }
 flockwave-gps = { version = "^3.4.0", source = "fury" }
 flockwave-logger = { version = "^2.0.0", source = "fury" }
-flockwave-mavlink = { git = "https://github.com/nguyenthuthaochau2201/custom-mavlink.git", branch = "main" }
+flockwave-mavlink = { version = ">=0.3.0", source = "fury" }
 flockwave-net = { extras = ["async"], version = "^7.0.2", source = "fury" }
 flockwave-parsers = { version = "^2.1.0", source = "fury" }
 flockwave-spec = { version = "^2.3.0", source = "fury", extras = [
