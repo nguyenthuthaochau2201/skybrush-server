@@ -133,6 +133,21 @@ def create_led_control_packet(
     return spec.led_control(**kwds)
 
 
+def create_led_control_packet(
+    data: Optional[Sequence[int]] = None, broadcast: bool = False
+) -> MAVLinkMessageSpecification:
+    """Creates a special LED light control packet used by our firmware."""
+    kwds = {
+        "instance": 66,
+        "pattern": 66,
+        "custom_len": len(data) if data else 0,
+        "custom_bytes": bytes(data) + _EMPTY[len(data) :] if data else _EMPTY,
+    }
+    if broadcast:
+        kwds.update(target_system=0, target_component=0)
+    return spec.led_control(**kwds)
+
+
 def format_elapsed_time(value: int) -> str:
     """Formats an elapsed time value in seconds into hour-minute-seconds
     format.
@@ -335,12 +350,16 @@ class DroneShowStatus:
 
         # process the RTCM counters
         rtcm_counters = (
-            primary_rtcm_count_plus_one - 1
-            if primary_rtcm_count_plus_one > 0
-            else None,
-            secondary_rtcm_count_plus_one - 1
-            if secondary_rtcm_count_plus_one > 0
-            else None,
+            (
+                primary_rtcm_count_plus_one - 1
+                if primary_rtcm_count_plus_one > 0
+                else None
+            ),
+            (
+                secondary_rtcm_count_plus_one - 1
+                if secondary_rtcm_count_plus_one > 0
+                else None
+            ),
         )
 
         return cls(

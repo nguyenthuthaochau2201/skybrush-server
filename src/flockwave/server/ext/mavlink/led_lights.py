@@ -81,7 +81,7 @@ class MAVLinkLEDLightConfigurationManager(
             config.blink_rate,
         )
 
-        return create_custom_data_packet(96, data)
+        return create_led_control_packet(data, broadcast=True)
 
     # async def _send_light_control_packet_v2(
     #     self, packet: MAVLinkMessageSpecification, target_system: int = 0
