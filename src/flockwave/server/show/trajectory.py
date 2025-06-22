@@ -315,6 +315,14 @@ class TrajectorySpecification:
                         yield segment
 
             prev_t, start = t, point
+    def iter_positions(self) -> Iterable[Point]:
+        """Iterates over all position points, ignoring control points."""
+        for t, pos, control in self._data.get("points", []):
+            yield tuple(pos)  # Convert list to tuple
+
+    def get_positions_len(self):
+        positions = self.iter_positions()
+        return len(positions)
 
     def propose_scaling_factor(self) -> int:
         """Proposes a scaling factor to use in a Skybrush binary show file when

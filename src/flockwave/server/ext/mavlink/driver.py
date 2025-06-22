@@ -46,8 +46,9 @@ from flockwave.server.show import (
     get_trajectory_from_show_specification,
     get_yaw_setpoints_from_show_specification,
     get_position_from_show_specification,
-    get_colors_from_show_specification,
+    get_colors_from_show_specification
 )
+from pyledctrl.player import Player as LightPlayer
 from flockwave.server.show.formats import SkybrushBinaryShowFile
 from flockwave.server.show.essp_format import EsspShowFile
 from flockwave.server.types import GCSLogMessageSender
@@ -2107,31 +2108,25 @@ class MAVLinkUAV(UAVBase):
         if coordinate_system.type != "nwu":
             raise RuntimeError("Only NWU coordinate systems are supported")
 
-        altitude_reference = get_altitude_reference_from_show_specification(show)
-        light_program = get_light_program_from_show_specification(show)
-        trajectory = get_trajectory_from_show_specification(show)
-        geofence = get_geofence_configuration_from_show_specification(show)
-        rth_plan = get_rth_plan_from_show_specification(show)
-        yaw_setpoints = get_yaw_setpoints_from_show_specification(show)
-
-        colors = get_colors_from_show_specification(show)
-        positions = get_position_from_show_specification(show)
-
-        position_data_size = len(positions) if positions else 0
-        color_data_size = len(colors) if colors else 0
-        # update later
-        color_fps = 15
-        position_fps = 15
+        color_fps = 25
+        position_fps = 25
+        # altitude_reference = get_altitude_reference_from_show_specification(show)
+        colors = LightPlayer.from_bytes(get_light_program_from_show_specification(show)).iterate(color_fps)
+        positions = get_trajectory_from_show_specification(show)
+        # geofence = get_geofence_configuration_from_show_specification(show)
+        # rth_plan = get_rth_plan_from_show_specification(show)
+        # yaw_setpoints = get_yaw_setpoints_from_show_specification(show)
 
         async with EsspShowFile.create_in_memory() as show_file:
+
+            position_section, position_data_size = show_file.get_trajectory(positions)
+            color_section , color_data_size = show_file.get_colors(colors)
             await show_file.add_header_section_block(
                 1, position_fps, position_data_size
             )
             await show_file.add_header_section_block(2, color_fps, color_data_size)
-            if positions:
-                await show_file.add_position(positions)
-            if colors:
-                await show_file.add_color(colors)
+            await show_file.add_block(position_section)
+            await show_file.add_block(color_section)
             # await show_file.finalize()
             data = show_file.get_contents()
 
@@ -2148,7 +2143,7 @@ class MAVLinkUAV(UAVBase):
         # Upload show file
         async with aclosing(MAVFTP.for_uav(self)) as ftp:
             # await ftp.put(data, "/collmot/show.skyb")
-            await ftp.put(data, "collmot/drone.essp")
+            await ftp.put(data, "APM/FLYSTACK/DRONE.ESSP")
 
         # We give some time for the filesystem to flush caches etc before
         # asking the drone to reload the show file. There were some reports
@@ -2161,53 +2156,53 @@ class MAVLinkUAV(UAVBase):
         # TODO(ntamas): this is not entirely accurate due to the back-and-forth
         # conversion happening between floats and ints; sometimes the 7th
         # decimal digit is off by one.
-        encoded_lat = int(coordinate_system.origin.lat * 1e7)
-        encoded_lon = int(coordinate_system.origin.lon * 1e7)
-        encoded_amsl = (
-            int(altitude_reference * 1e3)
-            if altitude_reference is not None
-            else -32768000
-        )
+        # encoded_lat = int(coordinate_system.origin.lat * 1e7)
+        # encoded_lon = int(coordinate_system.origin.lon * 1e7)
+        # encoded_amsl = (
+        #     int(altitude_reference * 1e3)
+        #     if altitude_reference is not None
+        #     else -32768000
+        # )
 
-        # Try configuring with a single USER_2 command first, falling back to
-        # the old parameter-based configuration if USER_2 is not supported.
-        try:
-            success = await self.driver.send_command_int(
-                self,
-                MAVCommand.USER_2,
-                0,  # command code
-                0,  # unused
-                0,  # unused
-                coordinate_system.orientation,
-                encoded_lat,
-                encoded_lon,
-                encoded_amsl,
-            )
-        except NotSupportedError:
-            success = False
+        # # Try configuring with a single USER_2 command first, falling back to
+        # # the old parameter-based configuration if USER_2 is not supported.
+        # try:
+        #     success = await self.driver.send_command_int(
+        #         self,
+        #         MAVCommand.USER_2,
+        #         0,  # command code
+        #         0,  # unused
+        #         0,  # unused
+        #         coordinate_system.orientation,
+        #         encoded_lat,
+        #         encoded_lon,
+        #         encoded_amsl,
+        #     )
+        # except NotSupportedError:
+        #     success = False
 
-        if not success:
-            # Configure show origin, orientation and altitude reference using
-            # the old method. There is no version of the firmware that would
-            # support SHOW_ORIGIN_AMSL but does not support the new-style
-            # configuration method so we raise an error if the user tries to
-            # set an AMSL value
-            if altitude_reference is not None:
-                raise NotSupportedError(
-                    "AMSL-based control is not supported in this firmware"
-                )
+        # if not success:
+        #     # Configure show origin, orientation and altitude reference using
+        #     # the old method. There is no version of the firmware that would
+        #     # support SHOW_ORIGIN_AMSL but does not support the new-style
+        #     # configuration method so we raise an error if the user tries to
+        #     # set an AMSL value
+        #     if altitude_reference is not None:
+        #         raise NotSupportedError(
+        #             "AMSL-based control is not supported in this firmware"
+        #         )
 
-            orientation = coordinate_system.orientation % 360
-            await self.set_parameter("SHOW_ORIGIN_LAT", encoded_lat)
-            await self.set_parameter("SHOW_ORIGIN_LNG", encoded_lon)
-            await self.set_parameter("SHOW_ORIENTATION", orientation)
+        #     orientation = coordinate_system.orientation % 360
+        #     await self.set_parameter("SHOW_ORIGIN_LAT", encoded_lat)
+        #     await self.set_parameter("SHOW_ORIGIN_LNG", encoded_lon)
+        #     await self.set_parameter("SHOW_ORIENTATION", orientation)
 
-        # Configure and enable geofence
-        await self.configure_geofence(geofence)
+        # # Configure and enable geofence
+        # await self.configure_geofence(geofence)
 
         # Ask drone to reload show file now that we are done with everything
         # else
-        await self.reload_show()
+        # await self.reload_show()
 
     async def wait_until_connected(self) -> None:
         """Waits until the UAV becomes connected (i.e. when we see the next

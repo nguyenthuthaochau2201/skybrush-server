@@ -18,9 +18,14 @@ from typing import (
     Optional,
     Sequence,
     Union,
+    Tuple
 )
 from .position import PositionList
 from .color import ColorList
+import struct
+from .trajectory import TrajectorySegment, TrajectorySpecification
+from .utils import Point
+from pyledctrl.executor import Color
 
 _RESERVE_BYTE: bytes = b"\x00"
 _ESSP_BINARY_FILE_MARKER: bytes = b"ESS"
@@ -134,7 +139,7 @@ class EsspShowFile:
             if version >= 1 and version < len(_ESSP_FILE_HEADER):
                 data = _ESSP_FILE_HEADER[version]
                 # header size 1
-                data += int(15).to_bytes(1, "little")
+                data += struct.pack("B", 15)
                 # path to crc 4
                 data += _RESERVE_BYTE * 4
                 # 2 reserve
@@ -142,9 +147,9 @@ class EsspShowFile:
                 # 2 unit millimeter factor
                 data += Struct("e").pack(1.0)
                 # 1 section count
-                data += int(2).to_bytes(1, "little")
+                data += struct.pack("B", 2)
                 # 1 section header size
-                data += int(5).to_bytes(1, "little")
+                data += struct.pack("B", 5)
             else:
                 raise RuntimeError(f"Unsupported version number: {version}")
         return cls(BytesIO(data))
@@ -208,16 +213,17 @@ class EsspShowFile:
         return ord(version)
 
     async def add_header_section_block(
-        self, type: EsspFormatBlockType, section_fps: bytes, section_size: bytes
+        self, type: EsspFormatBlockType, section_fps: int, section_size: int
     ):
         """Adds header section to the end of the ESSP File"""
         seekable = self._fp.seekable()
         if seekable:
             await self._fp.seek(0, SEEK_END)
         # Change the maximum size to be compatible with the real header
-        header = self._header_section_struct.pack(
-            type, _RESERVE_BYTE, section_fps, section_size
-        )
+        # header = self._header_section_struct.pack(
+        #     type, _RESERVE_BYTE, section_fps, section_size
+        # )
+        header = struct.pack("B", type) + _RESERVE_BYTE + struct.pack("HI",section_fps, section_size )
         await self._fp.write(header)
 
     async def add_block(self, body: bytes) -> None:
@@ -233,24 +239,16 @@ class EsspShowFile:
             )
         await self._fp.write(body)
 
-    async def finalize(
-        self,
-    ) -> None:
-        pass
-        # """Finalizes the file by updating its CRC block (if any)."""
-        # if not self._version:
-        #     if not self._fp.seekable():
-        #         raise RuntimeError(
-        #             "version number not known yet and the binary show file is not seekable"
-        #         )
+    def get_trajectory(self, trajectory: TrajectorySpecification):
+        encoded = PositionOnlyEncoder().encode(trajectory)
+        return encoded, len(encoded)
 
-        #     pos = await self._fp.tell()
-        #     try:
-        #         await self._rewind()
-        #     finally:
-        #         await self._fp.seek(pos)
-
-        # await self._update_crc32()
+    def get_colors(self, color_tuple: Tuple[float, Color]):
+        encoded = bytearray()
+        for _, color in color_tuple:
+            r, g, b = color
+            encoded.extend(struct.pack("BBB", r, g, b))  # 1 byte each
+        return bytes(encoded), len(bytes(encoded))
 
     def get_buffer(self) -> IO[bytes]:
         """Returns the underlying buffer of the file if it is backed by an
@@ -344,3 +342,27 @@ class ColorListEncoder:
             chunks.append(self._color_struct.pack(color.r, color.g, color.b))
 
         return b"".join(chunks)
+
+
+
+class PositionOnlyEncoder:
+    """Encodes positions (x, y, z) into binary format."""
+    _point_struct: ClassVar[Struct] = Struct("<hhh")
+
+    def __init__(self, scale: float = 1.0):
+        self._scale = 1000 / scale
+
+    def _scale_point(self, point: Point) -> Tuple[int, int, int]:
+        return (
+            int(point[0] * self._scale),
+            int(point[1] * self._scale),
+            int(point[2] * self._scale),
+        )
+
+    def encode(self, spec: TrajectorySpecification) -> bytes:
+        """Encodes only the position part of the trajectory."""
+        encoded = bytearray()
+        for point in spec.iter_positions():
+            x, y, z = self._scale_point(point)
+            encoded.extend(self._point_struct.pack(x, y, z))
+        return bytes(encoded)
