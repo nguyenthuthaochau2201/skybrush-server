@@ -2110,7 +2110,7 @@ class MAVLinkUAV(UAVBase):
 
         color_fps = 25
         position_fps = 25
-        # altitude_reference = get_altitude_reference_from_show_specification(show)
+        altitude_reference = get_altitude_reference_from_show_specification(show)
         colors = LightPlayer.from_bytes(get_light_program_from_show_specification(show)).iterate(color_fps)
         positions = get_trajectory_from_show_specification(show)
         # geofence = get_geofence_configuration_from_show_specification(show)
