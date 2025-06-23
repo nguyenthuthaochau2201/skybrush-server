@@ -26,7 +26,7 @@ import struct
 from .trajectory import TrajectorySegment, TrajectorySpecification
 from .utils import Point
 from pyledctrl.executor import Color
-_UNIT_SCALE_DEFAULT = 10
+_UNIT_SCALE_DEFAULT = 100
 _RESERVE_BYTE: bytes = b"\x00"
 _ESSP_BINARY_FILE_MARKER: bytes = b"ESS"
 _ESSP_FILE_HEADER: list[bytes] = [
