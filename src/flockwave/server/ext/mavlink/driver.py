@@ -2166,20 +2166,20 @@ class MAVLinkUAV(UAVBase):
 
         # Try configuring with a single USER_2 command first, falling back to
         # the old parameter-based configuration if USER_2 is not supported.
-        try:
-            success = await self.driver.send_command_int(
-                self,
-                MAVCommand.USER_2,
-                0,  # command code
-                0,  # unused
-                0,  # unused
-                coordinate_system.orientation,
-                encoded_lat,
-                encoded_lon,
-                encoded_amsl,
-            )
-        except NotSupportedError:
-            success = False
+        # try:
+        #     success = await self.driver.send_command_int(
+        #         self,
+        #         MAVCommand.USER_2,
+        #         0,  # command code
+        #         0,  # unused
+        #         0,  # unused
+        #         coordinate_system.orientation,
+        #         encoded_lat,
+        #         encoded_lon,
+        #         encoded_amsl,
+        #     )
+        # except NotSupportedError:
+        #     success = False
 
         # if not success:
         #     # Configure show origin, orientation and altitude reference using
