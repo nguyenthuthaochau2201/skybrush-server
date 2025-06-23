@@ -190,7 +190,7 @@ class ScheduledTakeoffManager:
                     for uav in self._network.uavs():
                         if (
                             not uav.is_connected
-                            or not uav.supports_scheduled_takeoff
+                            # or not uav.supports_scheduled_takeoff
                             or uav in self._uavs_to_update
                         ):
                             continue
