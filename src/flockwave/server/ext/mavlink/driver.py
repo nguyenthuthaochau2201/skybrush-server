@@ -2143,7 +2143,7 @@ class MAVLinkUAV(UAVBase):
         # Upload show file
         async with aclosing(MAVFTP.for_uav(self)) as ftp:
             # await ftp.put(data, "/collmot/show.skyb")
-            await ftp.put(data, "APM/FLYSTACK/DRONE.ESSP")
+            await ftp.put(data, "APM/FLYSTACK/SHOW.ESSP")
 
         # We give some time for the filesystem to flush caches etc before
         # asking the drone to reload the show file. There were some reports
