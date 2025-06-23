@@ -2156,30 +2156,30 @@ class MAVLinkUAV(UAVBase):
         # TODO(ntamas): this is not entirely accurate due to the back-and-forth
         # conversion happening between floats and ints; sometimes the 7th
         # decimal digit is off by one.
-        # encoded_lat = int(coordinate_system.origin.lat * 1e7)
-        # encoded_lon = int(coordinate_system.origin.lon * 1e7)
-        # encoded_amsl = (
-        #     int(altitude_reference * 1e3)
-        #     if altitude_reference is not None
-        #     else -32768000
-        # )
+        encoded_lat = int(coordinate_system.origin.lat * 1e7)
+        encoded_lon = int(coordinate_system.origin.lon * 1e7)
+        encoded_amsl = (
+            int(altitude_reference * 1e3)
+            if altitude_reference is not None
+            else -32768000
+        )
 
-        # # Try configuring with a single USER_2 command first, falling back to
-        # # the old parameter-based configuration if USER_2 is not supported.
-        # try:
-        #     success = await self.driver.send_command_int(
-        #         self,
-        #         MAVCommand.USER_2,
-        #         0,  # command code
-        #         0,  # unused
-        #         0,  # unused
-        #         coordinate_system.orientation,
-        #         encoded_lat,
-        #         encoded_lon,
-        #         encoded_amsl,
-        #     )
-        # except NotSupportedError:
-        #     success = False
+        # Try configuring with a single USER_2 command first, falling back to
+        # the old parameter-based configuration if USER_2 is not supported.
+        try:
+            success = await self.driver.send_command_int(
+                self,
+                MAVCommand.USER_2,
+                0,  # command code
+                0,  # unused
+                0,  # unused
+                coordinate_system.orientation,
+                encoded_lat,
+                encoded_lon,
+                encoded_amsl,
+            )
+        except NotSupportedError:
+            success = False
 
         # if not success:
         #     # Configure show origin, orientation and altitude reference using
@@ -2192,10 +2192,11 @@ class MAVLinkUAV(UAVBase):
         #             "AMSL-based control is not supported in this firmware"
         #         )
 
-        #     orientation = coordinate_system.orientation % 360
-        #     await self.set_parameter("SHOW_ORIGIN_LAT", encoded_lat)
-        #     await self.set_parameter("SHOW_ORIGIN_LNG", encoded_lon)
-        #     await self.set_parameter("SHOW_ORIENTATION", orientation)
+        orientation = coordinate_system.orientation % 360
+        await self.set_parameter("ESS_CNT_LAT", encoded_lat)
+        await self.set_parameter("ESS_CNT_LON", encoded_lon)
+        await self.set_parameter("ESS_CNT_AMSL", encoded_amsl)
+        await self.set_parameter("ESS_CNT_HDG", orientation)
 
         # # Configure and enable geofence
         # await self.configure_geofence(geofence)
@@ -2203,6 +2204,7 @@ class MAVLinkUAV(UAVBase):
         # Ask drone to reload show file now that we are done with everything
         # else
         # await self.reload_show()
+        await self.reboot()
 
     async def wait_until_connected(self) -> None:
         """Waits until the UAV becomes connected (i.e. when we see the next
