@@ -26,7 +26,7 @@ import struct
 from .trajectory import TrajectorySegment, TrajectorySpecification
 from .utils import Point
 from pyledctrl.executor import Color
-_UNIT_SCALE_DEFAULT = 100
+_UNIT_SCALE_DEFAULT = 10
 _RESERVE_BYTE: bytes = b"\x00"
 _ESSP_BINARY_FILE_MARKER: bytes = b"ESS"
 _ESSP_FILE_HEADER: list[bytes] = [
@@ -350,7 +350,7 @@ class PositionOnlyEncoder:
     _point_struct: ClassVar[Struct] = Struct("<hhh")
 
     def __init__(self, scale: float = 1.0):
-        self._scale = scale
+        self._scale = 1000 / scale
 
     def _scale_point(self, point: Point) -> Tuple[int, int, int]:
         return (
