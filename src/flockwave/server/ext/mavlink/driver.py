@@ -46,7 +46,7 @@ from flockwave.server.show import (
     get_trajectory_from_show_specification,
     get_yaw_setpoints_from_show_specification,
     get_position_from_show_specification,
-    get_colors_from_show_specification
+    get_colors_from_show_specification,
 )
 from pyledctrl.player import Player as LightPlayer
 from flockwave.server.show.formats import SkybrushBinaryShowFile
@@ -1964,12 +1964,13 @@ class MAVLinkUAV(UAVBase):
         # they are inherently ambiguous
 
         if seconds is None or seconds < 0:
-            gps_time_of_week = -1
+            start_time = 0
         else:
             dt = datetime.fromtimestamp(int(seconds), tz=timezone.utc)
-            _, gps_time_of_week = datetime_to_gps_time_of_week(dt)
+            start_time = dt.hour * 10000 + dt.minute * 100 + dt.second
+            # _, gps_time_of_week = datetime_to_gps_time_of_week(dt)
 
-        await self.set_parameter("SHOW_START_TIME", gps_time_of_week)
+        await self.set_parameter("ESS_START_TIME", start_time)
 
     async def set_led_color(
         self,
@@ -2111,7 +2112,9 @@ class MAVLinkUAV(UAVBase):
         color_fps = 25
         position_fps = 25
         altitude_reference = get_altitude_reference_from_show_specification(show)
-        colors = LightPlayer.from_bytes(get_light_program_from_show_specification(show)).iterate(color_fps)
+        colors = LightPlayer.from_bytes(
+            get_light_program_from_show_specification(show)
+        ).iterate(color_fps)
         positions = get_trajectory_from_show_specification(show)
         # geofence = get_geofence_configuration_from_show_specification(show)
         # rth_plan = get_rth_plan_from_show_specification(show)
@@ -2120,7 +2123,7 @@ class MAVLinkUAV(UAVBase):
         async with EsspShowFile.create_in_memory() as show_file:
 
             position_section, position_data_size = show_file.get_trajectory(positions)
-            color_section , color_data_size = show_file.get_colors(colors)
+            color_section, color_data_size = show_file.get_colors(colors)
             await show_file.add_header_section_block(
                 1, position_fps, position_data_size
             )
@@ -2157,11 +2160,9 @@ class MAVLinkUAV(UAVBase):
         # conversion happening between floats and ints; sometimes the 7th
         # decimal digit is off by one.
         encoded_lat = int(coordinate_system.origin.lat)
-        encoded_lon = int(coordinate_system.origin.lon )
+        encoded_lon = int(coordinate_system.origin.lon)
         encoded_amsl = (
-            int(altitude_reference)
-            if altitude_reference is not None
-            else -32768
+            int(altitude_reference) if altitude_reference is not None else -32768
         )
 
         # Try configuring with a single USER_2 command first, falling back to
