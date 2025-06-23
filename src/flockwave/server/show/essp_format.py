@@ -26,7 +26,7 @@ import struct
 from .trajectory import TrajectorySegment, TrajectorySpecification
 from .utils import Point
 from pyledctrl.executor import Color
-
+_UNIT_SCALE_DEFAULT = 10
 _RESERVE_BYTE: bytes = b"\x00"
 _ESSP_BINARY_FILE_MARKER: bytes = b"ESS"
 _ESSP_FILE_HEADER: list[bytes] = [
@@ -145,7 +145,7 @@ class EsspShowFile:
                 # 2 reserve
                 data += _RESERVE_BYTE * 2
                 # 2 unit millimeter factor
-                data += Struct("e").pack(1.0)
+                data += struct.pack("H", _UNIT_SCALE_DEFAULT)
                 # 1 section count
                 data += struct.pack("B", 2)
                 # 1 section header size
@@ -240,7 +240,7 @@ class EsspShowFile:
         await self._fp.write(body)
 
     def get_trajectory(self, trajectory: TrajectorySpecification):
-        encoded = PositionOnlyEncoder().encode(trajectory)
+        encoded = PositionOnlyEncoder(_UNIT_SCALE_DEFAULT).encode(trajectory)
         return encoded, len(encoded)
 
     def get_colors(self, color_tuple: Tuple[float, Color]):
@@ -350,7 +350,7 @@ class PositionOnlyEncoder:
     _point_struct: ClassVar[Struct] = Struct("<hhh")
 
     def __init__(self, scale: float = 1.0):
-        self._scale = 1000 / scale
+        self._scale = scale
 
     def _scale_point(self, point: Point) -> Tuple[int, int, int]:
         return (
