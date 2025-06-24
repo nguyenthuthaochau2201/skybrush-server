@@ -2159,10 +2159,10 @@ class MAVLinkUAV(UAVBase):
         # TODO(ntamas): this is not entirely accurate due to the back-and-forth
         # conversion happening between floats and ints; sometimes the 7th
         # decimal digit is off by one.
-        encoded_lat = int(coordinate_system.origin.lat)
-        encoded_lon = int(coordinate_system.origin.lon)
+        encoded_lat = round(coordinate_system.origin.lat, 7)
+        encoded_lon = round(coordinate_system.origin.lon, 7)
         encoded_amsl = (
-            int(altitude_reference) if altitude_reference is not None else -32768
+            round(altitude_reference, 1) if altitude_reference is not None else -32768
         )
 
         # Try configuring with a single USER_2 command first, falling back to
