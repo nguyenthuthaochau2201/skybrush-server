@@ -1971,6 +1971,7 @@ class MAVLinkUAV(UAVBase):
             # _, gps_time_of_week = datetime_to_gps_time_of_week(dt)
 
         await self.set_parameter("ESS_START_TIME", start_time)
+        await self.set_parameter("ESS_START_MSEC", 0)
 
     async def set_led_color(
         self,
