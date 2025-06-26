@@ -2123,7 +2123,7 @@ class MAVLinkUAV(UAVBase):
 
         async with EsspShowFile.create_in_memory() as show_file:
 
-            position_section, position_data_size = show_file.get_trajectory(positions)
+            position_section, position_data_size = show_file.get_trajectory(positions, position_fps)
             color_section, color_data_size = show_file.get_colors(colors)
             print(f"COLOR SECTION: {color_data_size}")
             print(f"POS SECTION: {position_data_size}")
