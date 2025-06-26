@@ -239,8 +239,47 @@ class EsspShowFile:
             )
         await self._fp.write(body)
 
-    def get_trajectory(self, trajectory: TrajectorySpecification):
-        encoded = PositionOnlyEncoder(_UNIT_SCALE_DEFAULT).encode(trajectory)
+    def interpolate_bezier(self, points: list[Point], t: float) -> Point:
+        temp = list(points)
+        while len(temp) > 1:
+            temp = [
+                (
+                    (1 - t) * p0[0] + t * p1[0],
+                    (1 - t) * p0[1] + t * p1[1],
+                    (1 - t) * p0[2] + t * p1[2],
+                )
+                for p0, p1 in zip(temp, temp[1:])
+            ]
+        return temp[0]
+
+    def get_points_with_fps(self,traj: TrajectorySpecification, fps: float) -> list[Point]:
+        if fps <= 0:
+            raise ValueError("FPS must be positive")
+
+        result: list[Point] = []
+        for segment in traj.iter_segments():
+            n_samples = int(segment.duration * fps)
+            for i in range(n_samples):
+                t = i / n_samples
+                if segment.has_control_points:
+                    pt = self.interpolate_bezier(segment.points, t)
+                else:
+                    pt = (
+                        (1 - t) * segment.start[0] + t * segment.end[0],
+                        (1 - t) * segment.start[1] + t * segment.end[1],
+                        (1 - t) * segment.start[2] + t * segment.end[2],
+                    )
+                result.append(pt)
+
+        if not traj.is_empty:
+            last = list(traj.iter_segments())[-1].end
+            result.append(last)
+
+        return result
+
+    def get_trajectory(self, trajectory: TrajectorySpecification, fps: float):
+        points = self.get_points_with_fps(trajectory, fps)
+        encoded = PositionOnlyEncoder(_UNIT_SCALE_DEFAULT).encode_points(points)
         return encoded, len(encoded)
 
     def get_colors(self, color_tuple: Tuple[float, Color]):
@@ -367,6 +406,14 @@ class PositionOnlyEncoder:
         for point in spec.iter_positions():
             x, y, z = self._scale_point(point)
             # encoded.extend(self._point_struct.pack(x, y, z))
+            temp = struct.pack("<h", x) + struct.pack("<h", y) + struct.pack("<h", z)
+            encoded.extend(temp)
+        return bytes(encoded)
+
+    def encode_points(self, points: list[Point]) -> bytes:
+        encoded = bytearray()
+        for point in points:
+            x,y,z = ( self._scale_point(point))
             temp = struct.pack("<h", x) + struct.pack("<h", y) + struct.pack("<h", z)
             encoded.extend(temp)
         return bytes(encoded)
