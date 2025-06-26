@@ -2110,12 +2110,12 @@ class MAVLinkUAV(UAVBase):
         if coordinate_system.type != "nwu":
             raise RuntimeError("Only NWU coordinate systems are supported")
 
+
+        #TODO: scale FPS
         color_fps = 25
         position_fps = 25
         altitude_reference = get_altitude_reference_from_show_specification(show)
-        colors = LightPlayer.from_bytes(
-            get_light_program_from_show_specification(show)
-        ).iterate(color_fps)
+        colors = LightPlayer.from_bytes(get_light_program_from_show_specification(show)).iterate(color_fps)
         positions = get_trajectory_from_show_specification(show)
         # geofence = get_geofence_configuration_from_show_specification(show)
         # rth_plan = get_rth_plan_from_show_specification(show)
@@ -2125,10 +2125,12 @@ class MAVLinkUAV(UAVBase):
 
             position_section, position_data_size = show_file.get_trajectory(positions)
             color_section, color_data_size = show_file.get_colors(colors)
+            print(f"COLOR SECTION: {color_data_size}")
+            print(f"POS SECTION: {position_data_size}")
             await show_file.add_header_section_block(
-                1, position_fps, position_data_size
+                1, position_fps * 100, position_data_size
             )
-            await show_file.add_header_section_block(2, color_fps, color_data_size)
+            await show_file.add_header_section_block(2, color_fps *100, color_data_size)
             await show_file.add_block(position_section)
             await show_file.add_block(color_section)
             # await show_file.finalize()
