@@ -2128,9 +2128,9 @@ class MAVLinkUAV(UAVBase):
             print(f"COLOR SECTION: {color_data_size}")
             print(f"POS SECTION: {position_data_size}")
             await show_file.add_header_section_block(
-                1, position_fps * 100, position_data_size
+                1, position_fps * 1000, position_data_size
             )
-            await show_file.add_header_section_block(2, color_fps *100, color_data_size)
+            await show_file.add_header_section_block(2, color_fps *1000, color_data_size)
             await show_file.add_block(position_section)
             await show_file.add_block(color_section)
             # await show_file.finalize()
