@@ -1969,8 +1969,10 @@ class MAVLinkUAV(UAVBase):
             dt = datetime.fromtimestamp(int(seconds), tz=timezone.utc)
             start_time = dt.hour * 10000 + dt.minute * 100 + dt.second
             # _, gps_time_of_week = datetime_to_gps_time_of_week(dt)
+            ms_start_time = int(dt.microsecond / 1000)
 
         await self.set_parameter("ESS_START_TIME", start_time)
+        await self.set_parameter("ESS_START_MSEC", ms_start_time)
 
     async def set_led_color(
         self,
@@ -2031,6 +2033,7 @@ class MAVLinkUAV(UAVBase):
         # autopilot supports the local reference frame. However, the ArduCopter
         # SITL simulator blows up when we do so -- so for ArduCopter, we send
         # zeros instead.
+        # TO-DO: TK_ALT
         if not self._autopilot.supports_local_frame:
             try:
                 # We assume that we are at zero meters AHL
