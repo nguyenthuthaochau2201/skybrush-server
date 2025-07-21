@@ -223,7 +223,7 @@ class EsspShowFile:
         # header = self._header_section_struct.pack(
         #     type, _RESERVE_BYTE, section_fps, section_size
         # )
-        header = struct.pack("B", type) + _RESERVE_BYTE + struct.pack("HI",section_fps, section_size )
+        header = struct.pack("<B", type) + _RESERVE_BYTE + struct.pack("<H", section_fps) + struct.pack("<I", section_size)
         await self._fp.write(header)
 
     async def add_block(self, body: bytes) -> None:
@@ -247,7 +247,9 @@ class EsspShowFile:
         encoded = bytearray()
         for _, color in color_tuple:
             r, g, b = color
-            encoded.extend(struct.pack("BBB", r, g, b))  # 1 byte each
+            temp = struct.pack("<B", r) + struct.pack("<B", g) + struct.pack("<B", b)
+            # encoded.extend(struct.pack("BBB", r, g, b))  # 1 byte each
+            encoded.extend(temp)
         return bytes(encoded), len(bytes(encoded))
 
     def get_buffer(self) -> IO[bytes]:
@@ -364,5 +366,7 @@ class PositionOnlyEncoder:
         encoded = bytearray()
         for point in spec.iter_positions():
             x, y, z = self._scale_point(point)
-            encoded.extend(self._point_struct.pack(x, y, z))
+            # encoded.extend(self._point_struct.pack(x, y, z))
+            temp = struct.pack("<h", x) + struct.pack("<h", y) + struct.pack("<h", z)
+            encoded.extend(temp)
         return bytes(encoded)

@@ -1969,10 +1969,9 @@ class MAVLinkUAV(UAVBase):
             dt = datetime.fromtimestamp(int(seconds), tz=timezone.utc)
             start_time = dt.hour * 10000 + dt.minute * 100 + dt.second
             # _, gps_time_of_week = datetime_to_gps_time_of_week(dt)
-            ms_start_time = int(dt.microsecond / 1000)
 
         await self.set_parameter("ESS_START_TIME", start_time)
-        await self.set_parameter("ESS_START_MSEC", ms_start_time)
+        await self.set_parameter("ESS_START_MSEC", 0)
 
     async def set_led_color(
         self,
@@ -2112,6 +2111,7 @@ class MAVLinkUAV(UAVBase):
         if coordinate_system.type != "nwu":
             raise RuntimeError("Only NWU coordinate systems are supported")
 
+        # TODO: scale FPS
         color_fps = 25
         position_fps = 25
         altitude_reference = get_altitude_reference_from_show_specification(show)
@@ -2127,10 +2127,14 @@ class MAVLinkUAV(UAVBase):
 
             position_section, position_data_size = show_file.get_trajectory(positions)
             color_section, color_data_size = show_file.get_colors(colors)
+            print(f"COLOR SECTION: {color_data_size}")
+            print(f"POS SECTION: {position_data_size}")
             await show_file.add_header_section_block(
-                1, position_fps, position_data_size
+                1, position_fps * 1000, position_data_size
             )
-            await show_file.add_header_section_block(2, color_fps, color_data_size)
+            await show_file.add_header_section_block(
+                2, color_fps * 1000, color_data_size
+            )
             await show_file.add_block(position_section)
             await show_file.add_block(color_section)
             # await show_file.finalize()
@@ -2162,10 +2166,10 @@ class MAVLinkUAV(UAVBase):
         # TODO(ntamas): this is not entirely accurate due to the back-and-forth
         # conversion happening between floats and ints; sometimes the 7th
         # decimal digit is off by one.
-        encoded_lat = int(coordinate_system.origin.lat)
-        encoded_lon = int(coordinate_system.origin.lon)
+        encoded_lat = round(coordinate_system.origin.lat, 7)
+        encoded_lon = round(coordinate_system.origin.lon, 7)
         encoded_amsl = (
-            int(altitude_reference) if altitude_reference is not None else -32768
+            round(altitude_reference, 1) if altitude_reference is not None else -32768
         )
 
         # Try configuring with a single USER_2 command first, falling back to
